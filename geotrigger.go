@@ -11,35 +11,38 @@ import (
 	"net/url"
 	"time"
 
-	"code.google.com/p/goauth2/oauth"
+	"golang.org/x/net/context"
+	"golang.org/x/oauth2"
 )
 
 var baseURL = "https://geotrigger.arcgis.com"
 
 type API struct {
-	t *oauth.Transport
+	t     *oauth2.Config
+	token *oauth2.Token
 }
 
 func NewAPI(clientID, clientSecret string) (*API, error) {
 	a := &API{
-		&oauth.Transport{
-			Config: &oauth.Config{
-				ClientId:     clientID,
-				ClientSecret: clientSecret,
-				TokenURL:     "https://www.arcgis.com/sharing/oauth2/token",
+		t: &oauth2.Config{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			Endpoint: oauth2.Endpoint{
+				TokenURL: "https://www.arcgis.com/sharing/oauth2/token",
 			},
-		}}
+		},
+	}
 	return a, a.getToken()
 }
 
 func (api *API) getToken() error {
 	v := url.Values{}
-	v.Set("client_id", api.t.ClientId)
+	v.Set("client_id", api.t.ClientID)
 	v.Set("client_secret", api.t.ClientSecret)
 	v.Set("grant_type", "client_credentials")
 	v.Set("f", "json")
 
-	resp, err := http.PostForm(api.t.TokenURL, v)
+	resp, err := http.PostForm(api.t.Endpoint.TokenURL, v)
 	if err != nil {
 		return err
 	}
@@ -54,7 +57,7 @@ func (api *API) getToken() error {
 	if err != nil {
 		return err
 	}
-	api.t.Token = &oauth.Token{
+	api.token = &oauth2.Token{
 		AccessToken: tokenResponse.AccessToken,
 		Expiry:      time.Now().Add(time.Second),
 	}
@@ -62,7 +65,7 @@ func (api *API) getToken() error {
 }
 
 func (api *API) get(endpointURL string, target interface{}) error {
-	r, err := api.t.Client().Get(baseURL + endpointURL)
+	r, err := api.t.Client(context.Background(), api.token).Get(baseURL + endpointURL)
 	if err != nil {
 		return err
 	}
@@ -77,7 +80,7 @@ func (api *API) post(endpointURL string, data interface{}) error {
 	if merr != nil {
 		return merr
 	}
-	r, err := api.t.Client().Post(baseURL+endpointURL, "application/json", bytes.NewReader(payload))
+	r, err := api.t.Client(context.Background(), api.token).Post(baseURL+endpointURL, "application/json", bytes.NewReader(payload))
 	if err != nil {
 		return err
 	}
